@@ -68,7 +68,7 @@ void * mult(void * data)
     size_t iter;
     /*=>Recuperation de l’index, c’est a dire index = ... */
     index= *(size_t*) data;
-    fprintf(stderr,"Begin mult(%ld)\n",index);
+    fprintf(stdout,"Begin mult(%ld)\n",index);
     /* Tant que toutes les iterations */
     for(iter=0;iter<prod.nbIterations;iter++) /* n’ont pas eu lieu */
         {
@@ -85,13 +85,13 @@ void * mult(void * data)
         pthread_mutex_unlock(&prod.mutex);
         /* fin du verrou*/
 
-        fprintf(stderr,"--> mult(%ld)\n",index); /* La multiplication peut commencer */
+        fprintf(stdout,"--> mult(%ld)\n",index); /* La multiplication peut commencer */
 
         /*=>Effectuer la multiplication a l’index du thread courant... */
         prod.v3[index]=prod.v1[index]*prod.v2[index];
 
         wasteTime(200+(rand()%200)); /* Perte du temps avec wasteTime() */
-        fprintf(stderr,"<-- mult(%ld) : %.3g*%.3g=%.3g\n", /* Affichage du */
+        fprintf(stdout,"<-- mult(%ld) : %.3g*%.3g=%.3g\n", /* Affichage du */
         index,prod.v1[index],prod.v2[index],prod.v3[index]);/* calcul sur */
         /* l’index */
 
@@ -110,7 +110,7 @@ void * mult(void * data)
 
         }
     }
-    fprintf(stderr,"Quit mult(%ld)\n",index);
+    fprintf(stdout,"Quit mult(%ld)\n",index);
     return(data);
 }
 
@@ -120,7 +120,7 @@ void * add(void * data)
 
     {
     size_t iter;
-    fprintf(stderr,"Begin add()\n");
+    fprintf(stdout,"Begin add()\n");
     /* Tant que toutes les iterations */
     for(iter=0;iter<prod.nbIterations;iter++) /* n’ont pas eu lieu */
     {
@@ -137,7 +137,7 @@ void * add(void * data)
         pthread_mutex_unlock(&prod.mutex);
         /* fin du verrou*/
 
-        fprintf(stderr,"--> add\n"); /* l’addition peut commencer */
+        fprintf(stdout,"--> add\n"); /* l’addition peut commencer */
         /* Effectuer l’addition... */
         prod.result=0.0;
         for(index=0;index<prod.size;index++)
@@ -145,7 +145,7 @@ void * add(void * data)
             prod.result+= prod.v3[index];
         }
         wasteTime(100+(rand()%100)); /* Perdre du temps avec wasteTime() */
-        fprintf(stderr,"<-- add\n");
+        fprintf(stdout,"<-- add\n");
         /*=>Autoriser le demarrage de l’affichage... */
         /*verrou*/
         pthread_mutex_lock(&prod.mutex);
@@ -155,7 +155,7 @@ void * add(void * data)
         pthread_cond_broadcast(&prod.cond);
 
     }
-    fprintf(stderr,"Quit add()\n");
+    fprintf(stdout,"Quit add()\n");
     return(data);
 }
 
@@ -180,7 +180,7 @@ int main(int argc,char ** argv)
     (sscanf(argv[2],"%lu",&prod.size)!=1)||
     ((int)prod.nbIterations<=0)||((int)prod.size<=0))
     {
-        fprintf(stderr,"usage: %s nbIterations vectorSize\n",argv[0]);
+        fprintf(stdout,"usage: %s nbIterations vectorSize\n",argv[0]);
         return(EXIT_FAILURE);
     }
 
@@ -239,15 +239,15 @@ int main(int argc,char ** argv)
             prod.v2[j]=10.0*(0.5-((double)rand())/((double)RAND_MAX));
         }
 
-        fprintf(stderr,"v1 is: ");
+        fprintf(stdout,"v1 is: ");
         for(int l=0; l<prod.size;l++){
-            fprintf(stderr,"%lf,",prod.v1[l]);
+            fprintf(stdout,"%lf,",prod.v1[l]);
         }
-        fprintf(stderr,"\nV2 is: ");
+        fprintf(stdout,"\nV2 is: ");
         for(int l=0; l<prod.size;l++){
-            fprintf(stderr,"%lf,",prod.v2[l]);
+            fprintf(stdout,"%lf,",prod.v2[l]);
         }
-        fprintf(stderr,"\n");
+        fprintf(stdout,"\n");
 
         /*=>Autoriser le demarrage des multiplications pour une nouvelle iteration..*/
 
@@ -275,16 +275,17 @@ int main(int argc,char ** argv)
 
         /*=>Afficher le resultat de l’iteration courante...*/
         printf("current iteration result is %lf \n",prod.result);
+        fprintf(stdout,"\n\n");
 
     }
 
     /*=>Attendre la fin des threads de multiplication...*/
     for(int k=0; k<prod.size; k++){
-        pthread_exit(&multTh[k]);
+        pthread_join(multTh[k],NULL);
     }
 
     /*=>Attendre la fin du thread d’addition...*/
-    pthread_exit(&addTh);
+    pthread_join(addTh,NULL);
 
     /*=> detruire prod.cond ... */
     pthread_cond_destroy(&prod.cond);
