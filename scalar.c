@@ -4,31 +4,33 @@
 #include <stdlib.h> 
 
 typedef enum{
-    STATE_WAIT,
-    STATE_MULT,
-    STATE_ADD,
-    STATE_PRINT,
+    STATE_WAIT, //initial state
+    STATE_MULT, //state to start multThread
+    STATE_ADD,  //state to start addThread
+    STATE_PRINT, //state to print infos
 } State;
 
-typedef struct{
-    State state;
-    int * pendingMult;
-    pthread_cond_t cond;
-    pthread_mutex_t mutex;
-    size_t nbIterations;
-    size_t size;
-    double * v1;
-    double * v2;
-    double * v3;
-    double result;
+/*********** Data structure ***********/
+
+typedef struct{ //struct that contains all the variables needed to do the calculus
+    State state; //refers to the current state of the program
+    int * pendingMult;  //pointer to the table of multiplications states
+    pthread_cond_t cond; //cond for the mutex
+    pthread_mutex_t mutex; //mutex to lock main, multTHread and addThread and to organize them
+    size_t nbIterations; //scalar product to do; has to be given as arg when running the program
+    size_t size; //size of the vectors to apply a scalar product to; has to be given as second arg when running the program
+    double * v1; //input vector1 to scalar product of size "size"
+    double * v2; //input vector to scalar product of size "size"
+    double * v3; //output vector of the products: v3[i] = v1[i]*v2[i]
+    double result; //output of scalar product
 } Product;
 
-/*********** Data structure ***********/
+// Declaring our global prod structure
 Product prod;
 
 /*********** Functions ***********/
 
-void initPendingMult(Product * prod)
+void initPendingMult(Product * prod) //set all pending mults to 1
 {
     size_t i;
     for(i=0;i<prod->size;i++)
@@ -37,7 +39,7 @@ void initPendingMult(Product * prod)
     }
 }
 
-int nbPendingMult(Product * prod)
+int nbPendingMult(Product * prod)  //counts the remaining pending mults, if it returns 0 , all the multiplications are done
 {
     size_t i;
     int nb=0;
@@ -45,10 +47,10 @@ int nbPendingMult(Product * prod)
     {
         nb+=prod->pendingMult[i];
     }
-    return(nb);
+    return(nb); //returns the number of multiplications that aren't finished
 }
 
-void wasteTime(unsigned long ms)
+void wasteTime(unsigned long ms) //here to waste time so that the allocated time to a thread is over. Thus , the program runs by changing threads and not in a sequential way 
 {
     unsigned long t,t0;
     struct timeval tv;
@@ -61,8 +63,10 @@ void wasteTime(unsigned long ms)
     } 
     while(t-t0<ms);
 }
+
 /*****************************************************************************/
-void * mult(void * data)
+
+void * mult(void * data) //Multiplication thread function, data input is the index "i" of the multiplication v3[i] = v2[i]*v1[i]
 {
     size_t index;
     size_t iter;
@@ -75,15 +79,15 @@ void * mult(void * data)
 
         /*=>Attendre l’autorisation de multiplication POUR UNE NOUVELLE ITERATION...*/
 
-        /*verrou*/
-        pthread_mutex_lock(&prod.mutex);
+        /*lock*/
+        pthread_mutex_lock(&prod.mutex); //lock mutex to not have access issues on prod.state as multiple threads can access it at once (access the same address)
 
-        while( STATE_MULT!=prod.state || prod.pendingMult[index]!=1) {
+        while( STATE_MULT!=prod.state || prod.pendingMult[index]!=1) { //condition is that our state is the right one and that the current multiplication that we are trying to do isn't already done
         pthread_cond_wait(&prod.cond,&prod.mutex);
         }
 
-        pthread_mutex_unlock(&prod.mutex);
-        /* fin du verrou*/
+        pthread_mutex_unlock(&prod.mutex); //free mutex
+        /* end of lock*/
 
         fprintf(stdout,"--> mult(%ld)\n",index); /* La multiplication peut commencer */
 
@@ -101,12 +105,12 @@ void * mult(void * data)
         if ( 0==nbPendingMult(&prod) ){
             /*=>Autoriser le demarrage de l’addition... */
 
-            /*verrou*/
+            /*lock*/
             pthread_mutex_lock(&prod.mutex);
-            prod.state= STATE_ADD;
+            prod.state= STATE_ADD;  //if all the multiplications are done, we can do the addition (addTh)
             pthread_mutex_unlock(&prod.mutex);
-            /* fin du verrou*/
-            pthread_cond_broadcast(&prod.cond);
+            /* end of lock*/
+            pthread_cond_broadcast(&prod.cond); //sending a signal to rerun the tests on prod.state in every Thread
 
         }
     }
@@ -116,7 +120,7 @@ void * mult(void * data)
 
 /*****************************************************************************/
 
-void * add(void * data)
+void * add(void * data) //addTh tread's function
 
     {
     size_t iter;
@@ -127,15 +131,15 @@ void * add(void * data)
         size_t index;
         /*=>Attendre l’autorisation d’addition... */
 
-        /*verrou*/
+        /*lock*/
         pthread_mutex_lock(&prod.mutex);
 
-        while ( !(STATE_ADD==prod.state) ){
+        while ( !(STATE_ADD==prod.state) ){ //checking that prod.state is in the right state
         pthread_cond_wait(&prod.cond,&prod.mutex);
         }
 
         pthread_mutex_unlock(&prod.mutex);
-        /* fin du verrou*/
+        /* end of lock*/
 
         fprintf(stdout,"--> add\n"); /* l’addition peut commencer */
         /* Effectuer l’addition... */
@@ -147,11 +151,11 @@ void * add(void * data)
         wasteTime(100+(rand()%100)); /* Perdre du temps avec wasteTime() */
         fprintf(stdout,"<-- add\n");
         /*=>Autoriser le demarrage de l’affichage... */
-        /*verrou*/
+        /*lock*/
         pthread_mutex_lock(&prod.mutex);
-        prod.state= STATE_PRINT;
+        prod.state= STATE_PRINT;    //when all multiplications and the addition are done, we can print the result
         pthread_mutex_unlock(&prod.mutex);
-        /* fin du verrou*/
+        /* end of lock*/
         pthread_cond_broadcast(&prod.cond);
 
     }
@@ -252,18 +256,18 @@ int main(int argc,char ** argv)
         /*=>Autoriser le demarrage des multiplications pour une nouvelle iteration..*/
 
         initPendingMult(&prod);
-        /*verrou*/
+        /*lock*/
         pthread_mutex_lock(&prod.mutex);
         prod.state = STATE_MULT;
         pthread_mutex_unlock(&prod.mutex);
-        /* fin du verrou*/
+        /* end of lock*/
         pthread_cond_broadcast(&prod.cond);
 
 
         /*=>Attendre l’autorisation d’affichage...*/
         //while(STATE_PRINT!=prod.state);
 
-        /*verrou*/
+        /*lock*/
         pthread_mutex_lock(&prod.mutex);
 
         while( !(STATE_PRINT==prod.state) ){
@@ -271,7 +275,7 @@ int main(int argc,char ** argv)
         }
 
         pthread_mutex_unlock(&prod.mutex);
-        /* fin du verrou*/
+        /* end of lock*/
 
         /*=>Afficher le resultat de l’iteration courante...*/
         printf("current iteration result is %lf \n",prod.result);
